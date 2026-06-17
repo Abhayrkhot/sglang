@@ -1469,16 +1469,18 @@ class Scheduler(
 
     def _apply_war_barrier(self):
         # This iter's schedule writes to shared GPU buffers wait for the prev
-        # forward's reads. Fast path (non-spec decode cuda-graph): wait on the
-        # read-done event the prev forward published after replay_prepare so its
-        # compute overlaps prep, then clear it. Else fall back to the whole-
-        # forward wait_stream. war_fastpath.safe gates the fast path: it is only
-        # set once the isolation check proves the captured graph reads its static
-        # snapshot, not the live shared pool (see war_fastpath_check).
+        # forward's reads. Fast path: wait on the read-done event the prev forward
+        # published after its last cuda-graph snapshot (non-spec: the decode graph;
+        # spec: draft_extend, the step's last phase) so its compute overlaps prep,
+        # then clear it. Else fall back to the whole-forward wait_stream.
+        # war_fastpath.safe gates the fast path: it is only set once the captured
+        # graph is known to read its static snapshot, not the live shared pool.
         if not self._war_barrier_enabled:
             return
-        wf = self.tp_worker.model_runner.war_fastpath
-        if self.spec_algorithm.is_none() and wf.safe and wf.read_done_event is not None:
+        # Worker-level: non-spec returns its own runner's state; spec routes to
+        # the runner whose last phase (eagle: draft_extend) publishes read-done.
+        wf = self.model_worker.war_fastpath
+        if wf.safe and wf.read_done_event is not None:
             self.schedule_stream.wait_event(wf.read_done_event)
             wf.read_done_event = None
         else:

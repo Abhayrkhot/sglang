@@ -276,6 +276,14 @@ class BaseSpecWorker(ABC):
         pass
 
     @property
+    def war_fastpath(self):
+        # Default: route the WAR fine barrier to the target runner. Its isolation
+        # probe stays disabled for spec, so this is the coarse-safe fallback.
+        # Workers whose last phase runs on the draft runner (e.g. eagle's
+        # draft_extend) override this to point there.
+        return self.target_worker.model_runner.war_fastpath
+
+    @property
     def spec_v2_attn_backends(self) -> tuple:
         """Attn backends touched by spec_v2 forward; OR-ed by decide_needs_cpu_seq_lens.
         Default returns target only; subclasses extend with draft backends."""

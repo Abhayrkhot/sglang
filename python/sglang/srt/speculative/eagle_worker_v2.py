@@ -412,6 +412,12 @@ class EagleDraftWorker(EagleDraftWorkerBase):
             self.cuda_graph_runner_for_draft_extend = Device2ExtendCudaGraphRunner[
                 self.target_worker.device
             ](self)
+            # Enable the WAR fine barrier for spec: draft_extend (the step's last
+            # phase) builds its block-table snapshot in-graph and reads only that,
+            # so the read-done event it publishes after the snapshot is a sound
+            # "forward done reading the shared pool" marker. (A dedicated
+            # isolation probe, like the non-spec war_fastpath_check, is a follow-up.)
+            self.draft_runner.war_fastpath.safe = True
             after_mem = get_available_gpu_memory(self.device, self.gpu_id)
             log_info_on_rank0(
                 logger,
@@ -892,6 +898,13 @@ class EAGLEWorkerV2(BaseSpecWorker):
         self.extend_lens = torch.empty((), dtype=torch.int64, device=self.device)
 
         self.plan_stream, self.plan_stream_ctx = _get_plan_stream(self.device)
+
+    @property
+    def war_fastpath(self):
+        # draft_extend (the spec step's last phase) runs on the draft runner and
+        # publishes the read-done event there; the scheduler's WAR barrier reads
+        # it via self.model_worker.war_fastpath.
+        return self._draft_worker.draft_runner.war_fastpath
 
     @property
     def spec_v2_attn_backends(self) -> tuple:

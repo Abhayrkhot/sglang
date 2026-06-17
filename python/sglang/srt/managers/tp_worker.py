@@ -71,6 +71,12 @@ class BaseTpWorker(ABC):
         pass
 
     @property
+    def war_fastpath(self):
+        # WAR fine-barrier state lives on the model runner that publishes the
+        # step's read-done event; for a plain worker that's its own runner.
+        return self.model_runner.war_fastpath
+
+    @property
     def sliding_window_size(self) -> Optional[int]:
         return self.model_runner.sliding_window_size
 

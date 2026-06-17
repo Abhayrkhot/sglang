@@ -528,6 +528,14 @@ class EAGLEDraftExtendCudaGraphRunner(DecodeCudaGraphRunner):
         )
         self.draft_extend_attn_backend.init_forward_metadata_out_graph(fb_view)
 
+        # Spec WAR fine barrier: draft_extend is the last phase of the spec step,
+        # so once its block-table snapshot is built the forward no longer reads
+        # the shared pool the next schedule overwrites. Publish a read-done event
+        # the scheduler waits on (reached worker-side via draft_runner.war_fastpath).
+        read_done = self.device_module.Event()
+        read_done.record()
+        self.model_runner.war_fastpath.read_done_event = read_done
+
         self.raw_bs = raw_bs
         self.bs = bs
         shape_key = self._make_graph_key(bs)
